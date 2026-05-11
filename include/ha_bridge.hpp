@@ -31,6 +31,11 @@ class HomeAssistantBridge {
     bool openBlind();
     bool closeBlind();
 
+    // Test/validation helpers.
+    static bool isPrivateIpv4(const std::string& ip);
+    bool isAllowedSsid(const std::string& currentSsid) const;
+    std::string makeServicePayload() const;
+
   private:
     HomeAssistantConfig cfg_;
 
@@ -38,8 +43,10 @@ class HomeAssistantBridge {
     std::optional<std::string> httpGet(const std::string& path);
     std::optional<std::string> httpPost(const std::string& path, const std::string& payload);
 
-    static bool isPrivateIpv4(const std::string& ip);
-    bool isAllowedSsid(const std::string& currentSsid) const;
+    bool isLocalBaseUrl() const;
+    std::optional<std::string> httpRequest(const std::string& method,
+                                           const std::string& path,
+                                           const std::optional<std::string>& payload);
 };
 
 } // namespace xteink
