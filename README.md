@@ -70,3 +70,13 @@ Fill:
 - Device attestation between Xteink and HA gateway.
 - Position slider (`set_cover_position`) with optimistic UI.
 - E-ink refresh optimization for HA panel.
+
+## Runtime wiring implemented in this skeleton
+- HTTP calls are executed via local `curl` invocation with:
+  - `Authorization: Bearer <token>`
+  - timeout derived from `http_timeout_ms`
+  - bounded retries from `max_retries`
+  - local HA base URL validation (fails closed otherwise)
+- `XTEINK_HA_TOKEN` environment variable overrides token from config.
+- Network context currently comes from environment-backed SDK placeholders:
+  - `XTEINK_CONNECTED`, `XTEINK_SSID`, `XTEINK_BSSID`, `XTEINK_LOCAL_IP`
