@@ -1,10 +1,14 @@
+#include "blind_control_view.hpp"
+#include "device_sdk.hpp"
 #include "ha_bridge.hpp"
 
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include "mini_json.hpp"
 #include <optional>
 #include <string>
+#include <thread>
 
 using namespace xteink;
 
@@ -22,26 +26,29 @@ std::optional<std::string> readTextFile(const std::string& path) {
     return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-std::optional<std::string> extractString(const std::string& json, const std::string& key) {
-    const auto keyPos = json.find("\"" + key + "\"");
-    if (keyPos == std::string::npos) return std::nullopt;
-    const auto colon = json.find(':', keyPos);
-    const auto q1 = json.find('"', colon + 1);
-    const auto q2 = json.find('"', q1 + 1);
-    if (colon == std::string::npos || q1 == std::string::npos || q2 == std::string::npos) return std::nullopt;
-    return json.substr(q1 + 1, q2 - q1 - 1);
-}
-
 HomeAssistantConfig loadConfig() {
     HomeAssistantConfig cfg;
     auto text = readTextFile("config/home_assistant.json");
     if (!text.has_value()) text = readTextFile("config/home_assistant.example.json");
 
     if (text.has_value()) {
-        if (auto v = extractString(*text, "ha_base_url"); v) cfg.haBaseUrl = *v;
-        if (auto v = extractString(*text, "entity_id"); v) cfg.entityId = *v;
-        if (auto v = extractString(*text, "token"); v) cfg.token = *v;
-        if (auto v = extractString(*text, "allowed_ssids"); v) cfg.allowedSsids = {*v};
+        auto parsed = mini_json::parse(*text);
+        if (parsed && parsed->isObject()) {
+            const auto& obj = std::get<mini_json::Object>(parsed->data);
+            auto readString = [&](const char* key, std::string& target) {
+                auto it = obj.find(key);
+                if (it != obj.end() && it->second.isString()) target = std::get<std::string>(it->second.data);
+            };
+            readString("ha_base_url", cfg.haBaseUrl);
+            readString("entity_id", cfg.entityId);
+            readString("token", cfg.token);
+            auto it = obj.find("allowed_ssids");
+            if (it != obj.end() && it->second.isArray()) {
+                for (const auto& entry : std::get<mini_json::Array>(it->second.data)) {
+                    if (entry.isString()) cfg.allowedSsids.push_back(std::get<std::string>(entry.data));
+                }
+            }
+        }
     }
 
     if (const char* env = std::getenv("XTEINK_HA_TOKEN")) cfg.token = env;
@@ -51,45 +58,35 @@ HomeAssistantConfig loadConfig() {
     return cfg;
 }
 
-struct NetworkContext {
-    std::string ssid;
-    std::string bssid;
-    std::string localIp;
-    bool connected{false};
-};
-
-NetworkContext getNetworkContextFromDeviceSdk() {
-    // TODO: Replace with actual Xteink SDK calls + connectivity callbacks.
-    NetworkContext ctx;
-    ctx.connected = std::getenv("XTEINK_CONNECTED") != nullptr;
-    ctx.ssid = std::getenv("XTEINK_SSID") ? std::getenv("XTEINK_SSID") : "";
-    ctx.bssid = std::getenv("XTEINK_BSSID") ? std::getenv("XTEINK_BSSID") : "";
-    ctx.localIp = std::getenv("XTEINK_LOCAL_IP") ? std::getenv("XTEINK_LOCAL_IP") : "";
-    return ctx;
-}
-
 } // namespace
 
 int main() {
     HomeAssistantConfig cfg = loadConfig();
     HomeAssistantBridge bridge(cfg);
-    NetworkContext net = getNetworkContextFromDeviceSdk();
+    XteinkDeviceSdk sdk;
 
-    if (!net.connected || !bridge.isEnabledForCurrentNetwork(net.ssid, net.localIp)) {
+    auto isEnabled = [&]() {
+        NetworkContext net = sdk.currentNetwork();
+        return net.connected && bridge.isEnabledForCurrentNetwork(net.ssid, net.localIp);
+    };
+
+    if (!isEnabled()) {
         std::cout << "HA control disabled (untrusted, disconnected, or non-local network).\n";
         return 0;
     }
+
+    BlindControlView view(bridge, isEnabled);
+    view.start();
+
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    view.render();
 
     auto state = bridge.fetchBlindState();
     if (!state.has_value()) {
         std::cout << "Unable to fetch blind state; keeping eReader functional. token=" << redactToken(cfg.token)
                   << "\n";
-        return 0;
     }
 
-    std::cout << "Blind state: " << state->state;
-    if (state->currentPosition.has_value()) std::cout << " position=" << *state->currentPosition;
-    std::cout << "\n";
-
+    view.stop();
     return 0;
 }

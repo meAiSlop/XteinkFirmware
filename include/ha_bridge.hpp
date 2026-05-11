@@ -16,8 +16,14 @@ struct HomeAssistantConfig {
 };
 
 struct BlindState {
-    std::string state; // "open", "closed", etc.
-    std::optional<int> currentPosition; // 0..100
+    std::string state;
+    std::optional<int> currentPosition;
+};
+
+struct HttpResult {
+    long statusCode{0};
+    std::string body;
+    std::string error;
 };
 
 class HomeAssistantBridge {
@@ -31,7 +37,6 @@ class HomeAssistantBridge {
     bool openBlind();
     bool closeBlind();
 
-    // Test/validation helpers.
     static bool isPrivateIpv4(const std::string& ip);
     bool isAllowedSsid(const std::string& currentSsid) const;
     std::string makeServicePayload() const;
@@ -40,13 +45,13 @@ class HomeAssistantBridge {
     HomeAssistantConfig cfg_;
 
     bool postService(const std::string& serviceName);
-    std::optional<std::string> httpGet(const std::string& path);
-    std::optional<std::string> httpPost(const std::string& path, const std::string& payload);
+    std::optional<HttpResult> httpGet(const std::string& path);
+    std::optional<HttpResult> httpPost(const std::string& path, const std::string& payload);
 
     bool isLocalBaseUrl() const;
-    std::optional<std::string> httpRequest(const std::string& method,
-                                           const std::string& path,
-                                           const std::optional<std::string>& payload);
+    std::optional<HttpResult> httpRequest(const std::string& method,
+                                          const std::string& path,
+                                          const std::optional<std::string>& payload);
 };
 
 } // namespace xteink
