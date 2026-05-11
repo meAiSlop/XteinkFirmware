@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   push:
@@ -9,36 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build app
-        run: g++ -std=c++20 -Iinclude src/main.cpp src/ha_bridge.cpp -o xteink_app
-      - name: Build unit tests
-        run: g++ -std=c++20 -Iinclude tests/test_ha_bridge.cpp src/ha_bridge.cpp -o test_ha_bridge
-      - name: Run unit tests
-        run: ./test_ha_bridge
-
-  integration-ha:
-    runs-on: ubuntu-latest
-    services:
-      homeassistant:
-        image: ghcr.io/home-assistant/home-assistant:stable
-        ports:
-          - 8123:8123
-    steps:
-      - uses: actions/checkout@v4
-      - name: Placeholder integration test
-        run: echo "Add authenticated HA API integration test here."
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Secret scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build metadata
-        run: |
-          echo "commit=${GITHUB_SHA}" > build-metadata.txt
-          sha256sum src/main.cpp src/ha_bridge.cpp include/ha_bridge.hpp >> build-metadata.txt
+      - name: Configure
+        run: cmake -S . -B build
+      - name: Build
+        run: cmake --build build -j
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Integration test
+        run: tests/integration/run_integration.sh
